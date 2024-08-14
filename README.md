@@ -9,3 +9,8 @@ For cancellations, specify the reason and the immediate previous state to help o
 
 run cassandra and kafka in docker
 docker-compose up -d
+
+
+create keyspace manually
+- docker exec -it orderservice-cassandra-1 cqlsh
+- CREATE KEYSPACE order_service WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};

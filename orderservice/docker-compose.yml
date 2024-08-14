@@ -22,24 +22,30 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
 
-#  cassandra:
-#    image: cassandra:latest
-#    ports:
-#      - "9042:9042"
-#    environment:
-#      CASSANDRA_CLUSTER_NAME: MyCluster
-#    volumes:
-#      - ./cassandra/data:/var/lib/cassandra/data
-#      - ./cassandra/commitlog:/var/lib/cassandra/commitlog
-#      - ./cassandra/saved_caches:/var/lib/cassandra/saved_caches
+  cassandra:
+    image: cassandra:latest
+    ports:
+      - "9042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: MyCluster
+      CASSANDRA_DC: DC1
+      CASSANDRA_RACK: Rack1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    volumes:
+      - cassandra_data:/var/lib/cassandra
 
-#  orderservice:
+#  app:
 #    build: .
 #    depends_on:
 #      - kafka
 #      - cassandra
 #    environment:
-#      - KAFKA_BROKER_URL=kafka:9092
-#      - CASSANDRA_HOST=cassandra
+#      SPRING_DATA_CASSANDRA_CONTACT_POINTS: cassandra
+#      SPRING_DATA_CASSANDRA_PORT: 9042
+#      SPRING_DATA_CASSANDRA_KEYSPACE: order_service
+#      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 #    ports:
 #      - "8000:8000"
+
+volumes:
+  cassandra_data:
