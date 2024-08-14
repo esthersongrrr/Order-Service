@@ -15,6 +15,8 @@ public class Order {
     private Date createdAt;
 
     // Constructors, Getters and Setters
+    public Order() {
+    }
     public Order(UUID id, String status, String details, Date createdAt) {
         this.id = id;
         this.status = status;
