@@ -2,6 +2,7 @@ package com.esther.orderservice.service;
 
 import com.esther.orderservice.dao.OrderRepository;
 import com.esther.orderservice.entity.Order;
+import com.esther.orderservice.payload.Order2ItemDto;
 import com.esther.orderservice.payload.OrderDto;
 import com.google.gson.Gson;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -33,12 +34,13 @@ public class OrderService {
         orderdto.setStatus("Created");
         orderRepository.save(orderDto2Order(orderdto));
 
-        // Serialize OrderDto to JSON
-        String orderJson = gson.toJson(orderdto);
+        Order2ItemDto newO2I = new Order2ItemDto(orderdto.getId(), orderdto.getItems(), orderdto.getAmount());
+        String orderJson = gson.toJson(newO2I);
         System.out.println("Sending JSON to Kafka: " + orderJson);
         kafkaTemplate.send("order-created", orderdto.getId().toString(), orderJson);
         return orderdto;
     }
+
 
 //    public OrderDto updateOrder(UUID id, OrderDto orderdto) {
 //        orderRepository.save(orderDto2Order(orderdto));
@@ -116,7 +118,30 @@ public class OrderService {
     public void handleOrderCancelled(String json) {
         OrderDto orderDto = gson.fromJson(json, OrderDto.class);
         System.out.println("Received order cancellation for order ID: " + orderDto.getId());
-        // Implement additional logic as needed using the orderDto object
+
+        Order2ItemDto newO2I = new Order2ItemDto(orderDto.getId(), orderDto.getItems(), orderDto.getAmount());
+        String orderJson = gson.toJson(newO2I);
+        System.out.println("Sending JSON to Kafka: " + orderJson);
+        kafkaTemplate.send("order-failed", orderDto.getId().toString(), orderJson);
+    }
+
+    // Listener for order creations
+    @KafkaListener(topics = "item-placed")
+    public void handleOrderPlaced(String json) {
+        Order2ItemDto orderDto = gson.fromJson(json, Order2ItemDto.class);
+        UUID orderId = orderDto.getId();
+        System.out.println("Received item placement for order ID: " + orderId);
+
+        Order order = orderRepository.findById(orderId).orElseThrow();
+        order.setAmount(orderDto.getAmount());
+        order.setItems(orderDto.getItems());
+        order.setStatus("Placed");
+        orderRepository.save(order);
+
+        // Serialize OrderDto to JSON
+        String orderJson = gson.toJson(order2OrderDto(order));
+        System.out.println("Sending JSON to Kafka: " + orderJson);
+        kafkaTemplate.send("order-placed", order.getId().toString(), orderJson);
     }
 
 
@@ -136,6 +161,11 @@ public class OrderService {
         System.out.println("Received payment refund for order ID: " + orderId);
         Order order = orderRepository.findById(orderId).orElseThrow();
         order.setStatus("Cancelled");
+
+        Order2ItemDto newO2I = new Order2ItemDto(order.getId(), order.getItems(), order.getAmount());
+        String orderJson = gson.toJson(newO2I);
+        System.out.println("Sending JSON to Kafka: " + orderJson);
+        kafkaTemplate.send("order-failed", order.getId().toString(), orderJson);
     }
 
     private OrderDto order2OrderDto(Order order) {
