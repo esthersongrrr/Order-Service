@@ -3,22 +3,28 @@ package com.esther.orderservice.service;
 import com.esther.orderservice.dao.OrderRepository;
 import com.esther.orderservice.entity.Order;
 import com.esther.orderservice.payload.OrderDto;
+import com.google.gson.Gson;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.Date;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 public class OrderService {
     private OrderRepository orderRepository;
-    @Autowired
-    private KafkaTemplate<String, OrderDto> kafkaTemplate;
+    private Gson gson;
 
-    public OrderService(OrderRepository orderRepository) {
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate; // could lead to uneven load distribution across partitions
+    public OrderService(OrderRepository orderRepository, Gson gson) {
         this.orderRepository = orderRepository;
+        this.gson = gson; // Initialize Gson
     }
 
     public OrderDto createOrder(OrderDto orderdto) {
@@ -26,29 +32,63 @@ public class OrderService {
         orderdto.setCreatedAt(new Date());
         orderdto.setStatus("Created");
         orderRepository.save(orderDto2Order(orderdto));
-        kafkaTemplate.send("order-created", orderdto);
+
+        // Serialize OrderDto to JSON
+        String orderJson = gson.toJson(orderdto);
+        System.out.println("Sending JSON to Kafka: " + orderJson);
+        kafkaTemplate.send("order-created", orderdto.getId().toString(), orderJson);
         return orderdto;
     }
 
-    public OrderDto updateOrder(UUID id, OrderDto orderdto) {
-        orderRepository.save(orderDto2Order(orderdto));
-        return orderdto; // Ensure you handle state changes correctly
-    }
+//    public OrderDto updateOrder(UUID id, OrderDto orderdto) {
+//        orderRepository.save(orderDto2Order(orderdto));
+//        return orderdto; // Ensure you handle state changes correctly
+//    }
 
-    public OrderDto updateOrderStatus(UUID id, String status) {
+    public OrderDto updateOrder(UUID id, Map<String, Object> updates) {
         Order order = orderRepository.findById(id).orElseThrow();
-        order.setStatus(status);
+        updates.forEach((key, value) -> {
+            switch (key) {
+                case "amount":
+                    if ( value == order.getAmount()) {
+                        throw new RuntimeException("Amount not change.");
+                    }
+                    order.setAmount((BigDecimal) value);
+                    break;
+                case "status":
+                    if (value.equals(order.getStatus())) {
+                        throw new RuntimeException("Status not change.");
+                    }
+                    order.setStatus((String) value);
+                    break;
+                case "details":
+                    order.setDetails((String) value);
+                    break;
+                case "address":
+                    if (value.equals(order.getAddress())) {
+                        throw new RuntimeException("Addresses not change.");
+                    }
+                    order.setAddress((String) value);
+                    break;
+            }
+        });
         orderRepository.save(order);
-        OrderDto od = order2OrderDto(order);
-        kafkaTemplate.send("order-updated", od);
-        return od;
+
+//        // Serialize OrderDto to JSON
+//        String orderJson = gson.toJson(orderdto);
+//        kafkaTemplate.send("order-updated", orderdto.getId().toString(), orderJson);
+
+        return order2OrderDto(order);
     }
 
     public void cancelOrder(UUID id) {
         Order order = orderRepository.findById(id).orElseThrow();
         order.setStatus("Cancelled");
         orderRepository.save(order);
-        kafkaTemplate.send("order-cancelled", order2OrderDto(order));
+
+        // Serialize OrderDto to JSON
+        String orderJson = gson.toJson(order2OrderDto(order));
+        kafkaTemplate.send("order-cancelled", order2OrderDto(order).getId().toString(), orderJson);
     }
 
     public OrderDto getOrderById(UUID id) {
@@ -57,23 +97,45 @@ public class OrderService {
 
     // Listener for order creations
     @KafkaListener(topics = "order-created")
-    public void handleOrderCreated(OrderDto orderdto) {
-        System.out.println("Received order creation for order ID: " + orderdto.getId());
-        // Implement additional logic as needed
+    public void handleOrderCreated(String json) {
+        OrderDto orderDto = gson.fromJson(json, OrderDto.class);
+        UUID orderId = orderDto.getId();
+        System.out.println("Received order creation for order ID: " + orderId);
     }
 
     // Listener for order updates
     @KafkaListener(topics = "order-updated")
-    public void handleOrderUpdated(OrderDto orderdto) {
-        System.out.println("Received order update for order ID: " + orderdto.getId());
-        // Implement additional logic as needed
+    public void handleOrderUpdated(String json) {
+        OrderDto orderDto = gson.fromJson(json, OrderDto.class);
+        System.out.println("Received order update for order ID: " + orderDto.getId() + "new amount:" + orderDto.getAmount() );
+        // Implement additional logic as needed using the orderDto object
     }
 
     // Listener for order cancellations
     @KafkaListener(topics = "order-cancelled")
-    public void handleOrderCancelled(OrderDto orderdto) {
-        System.out.println("Received order cancellation for order ID: " + orderdto.getId());
-        // Implement additional logic as needed
+    public void handleOrderCancelled(String json) {
+        OrderDto orderDto = gson.fromJson(json, OrderDto.class);
+        System.out.println("Received order cancellation for order ID: " + orderDto.getId());
+        // Implement additional logic as needed using the orderDto object
+    }
+
+
+    @KafkaListener(topics = "payment-success")
+    public void handlePaymentSuccess(String json) {
+        OrderDto orderDto = gson.fromJson(json, OrderDto.class);
+        UUID orderId = orderDto.getId();
+        System.out.println("Received payment complete for order ID: " + orderId);
+        Order order = orderRepository.findById(orderId).orElseThrow();
+        order.setStatus("Completed");
+    }
+
+    @KafkaListener(topics = "payment-refunded")
+    public void handlePaymentRefunded(String json) {
+        OrderDto orderDto = gson.fromJson(json, OrderDto.class);
+        UUID orderId = orderDto.getId();
+        System.out.println("Received payment refund for order ID: " + orderId);
+        Order order = orderRepository.findById(orderId).orElseThrow();
+        order.setStatus("Cancelled");
     }
 
     private OrderDto order2OrderDto(Order order) {
@@ -82,6 +144,9 @@ public class OrderService {
         od.setCreatedAt(order.getCreatedAt());
         od.setStatus(order.getStatus());
         od.setDetails(order.getDetails());
+        od.setAmount(order.getAmount());
+        od.setItems(order.getItems());
+        od.setAddress(order.getAddress());
         return od;
     }
 
@@ -91,6 +156,9 @@ public class OrderService {
         order.setCreatedAt(orderdto.getCreatedAt());
         order.setStatus(orderdto.getStatus());
         order.setDetails(orderdto.getDetails());
+        order.setAmount(orderdto.getAmount());
+        order.setItems(orderdto.getItems());
+        order.setAddress(orderdto.getAddress());
         return order;
     }
 }

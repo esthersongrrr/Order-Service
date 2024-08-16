@@ -34,18 +34,20 @@ services:
     volumes:
       - cassandra_data:/var/lib/cassandra
 
-#  app:
-#    build: .
-#    depends_on:
-#      - kafka
-#      - cassandra
-#    environment:
-#      SPRING_DATA_CASSANDRA_CONTACT_POINTS: cassandra
-#      SPRING_DATA_CASSANDRA_PORT: 9042
-#      SPRING_DATA_CASSANDRA_KEYSPACE: order_service
-#      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-#    ports:
-#      - "8000:8000"
+  app:
+    build: .
+    container_name: order_service
+    depends_on:
+      - kafka
+      - cassandra
+    ports:
+      - "8000:8000"
+    environment:
+      - KAFKA_BROKER_URL=kafka:9092
+      - CASSANDRA_HOST=cassandra
+      - ZOOKEEPER_HOST=zookeeper:2181  # Include if your app directly interacts with Zookeeper
+    networks:
+      - default
 
 volumes:
   cassandra_data:

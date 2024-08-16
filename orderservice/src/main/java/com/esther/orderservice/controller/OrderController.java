@@ -4,8 +4,12 @@ import com.esther.orderservice.entity.Order;
 import com.esther.orderservice.payload.OrderDto;
 import com.esther.orderservice.service.OrderService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -23,9 +27,9 @@ public class OrderController {
         return orderService.createOrder(order);
     }
 
-    @PutMapping("/{id}")
-    public OrderDto updateOrder(@PathVariable UUID id, @RequestBody OrderDto order) {
-        return orderService.updateOrderStatus(id, order.getStatus());
+    @PatchMapping("/{id}")
+    public OrderDto updateOrder(@PathVariable UUID id, @RequestBody Map<String, Object> updates) {
+        return orderService.updateOrder(id, updates);
     }
 
     @PatchMapping("/{id}/cancel")

@@ -8,9 +8,20 @@ For an order update, which might include status changes due to payment completio
 For cancellations, specify the reason and the immediate previous state to help other services revert any provisional actions they may have taken.
 
 run cassandra and kafka in docker
-docker-compose up -d
+`docker-compose up -d`
+
+rebuild
+`docker-compose down`
+`docker-compose up --build`
 
 
 create keyspace manually
 - docker exec -it orderservice-cassandra-1 cqlsh
 - CREATE KEYSPACE order_service WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+
+- USE order_service;
+- DESCRIBE TABLE orders;
+
+- ALTER TABLE orders ADD amount decimal;
+
+mvn clean install
